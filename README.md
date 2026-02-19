@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Arena Starter
 
-## Getting Started
+Simple starter with:
+- Next.js (App Router + TypeScript)
+- Supabase client setup
+- Tailwind CSS
+- Reusable MUI component pattern
+- TanStack Table example
 
-First, run the development server:
+## Setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Install dependencies (already done if you used this repo directly):
+`npm install`
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Set environment variables:
+`cp .env.example .env.local`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Fill `.env.local` values from your Supabase project:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Run the app:
+`npm run dev`
 
-## Learn More
+5. Start local PvP WebSocket server (separate terminal):
+`npm run ws:dev`
 
-To learn more about Next.js, take a look at the following resources:
+Open `http://localhost:3000`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Key Files
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Supabase client: `src/lib/supabase/client.ts`
+- Reusable MUI component: `src/components/ui/app-button.tsx`
+- TanStack table component: `src/components/table/sample-users-table.tsx`
+- Home page example: `src/app/page.tsx`
 
-## Deploy on Vercel
+## Scripts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `npm run dev` start development server
+- `npm run lint` run ESLint
+- `npm run build` build for production
+- `npm run ws:dev` run local in-memory PvP WebSocket server
