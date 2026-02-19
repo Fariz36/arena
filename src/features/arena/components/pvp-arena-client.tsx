@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ClientToServerEvent, ServerQuestionPayload, parseServerEvent } from "@/features/arena/lib/pvp-protocol";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type PvpArenaClientProps = {
   matchId: string;
@@ -9,7 +8,20 @@ type PvpArenaClientProps = {
   username: string;
 };
 
-const DEFAULT_WS_URL = "ws://localhost:8080";
+type ArenaQuestion = {
+  question_id: string;
+  question_no: number;
+  question_start_time: string;
+  text: string;
+  time_limit: number;
+  options: Array<{ id: string; text: string }>;
+};
+
+type SnapshotResponse = {
+  questions: ArenaQuestion[];
+  scores: Record<string, number>;
+  arena_status: "waiting" | "active" | "finished" | null;
+};
 
 type MatchResultState = {
   winner: string | null;
@@ -17,137 +29,172 @@ type MatchResultState = {
 };
 
 export default function PvpArenaClient({ matchId, userId, username }: PvpArenaClientProps) {
-  const wsUrl = process.env.NEXT_PUBLIC_PVP_WS_URL ?? DEFAULT_WS_URL;
-  const wsRef = useRef<WebSocket | null>(null);
+  void username;
+
   const timerIntervalRef = useRef<number | null>(null);
 
   const [isConnected, setIsConnected] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [question, setQuestion] = useState<ServerQuestionPayload | null>(null);
+  const [questions, setQuestions] = useState<ArenaQuestion[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<ArenaQuestion | null>(null);
   const [remainingMs, setRemainingMs] = useState(0);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [answeredQuestionIds, setAnsweredQuestionIds] = useState<Record<string, true>>({});
   const [scores, setScores] = useState<Record<string, number>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [matchResult, setMatchResult] = useState<MatchResultState | null>(null);
 
-  const authPayload = useMemo<ClientToServerEvent>(
-    () => ({ type: "AUTH", user_id: userId, name: username }),
-    [userId, username],
-  );
-
-  useEffect(() => {
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setIsConnected(true);
-      ws.send(JSON.stringify(authPayload));
-      ws.send(JSON.stringify({ type: "RESUME_MATCH", match_id: matchId } satisfies ClientToServerEvent));
-    };
-
-    ws.onmessage = (event) => {
-      const payload = parseServerEvent(String(event.data));
-      if (!payload) {
-        return;
-      }
-
-      if (payload.type === "MATCH_FOUND" && payload.match_id === matchId) {
-        setCountdown(payload.countdown);
-        return;
-      }
-
-      if (payload.type === "QUESTION" && payload.match_id === matchId) {
-        setFeedback(null);
-        setMatchResult(null);
-        setQuestion(payload);
-        setSelectedOptionId(null);
-        setRemainingMs(Math.max(new Date(payload.deadline_at).getTime() - Date.now(), 0));
-        return;
-      }
-
-      if (payload.type === "ROUND_RESULT" && payload.match_id === matchId) {
-        setScores(payload.scores);
-        setFeedback(`Round ended. Correct answer: ${payload.correct_answer}`);
-        return;
-      }
-
-      if (payload.type === "MATCH_RESULT" && payload.match_id === matchId) {
-        setQuestion(null);
-        setScores(payload.final_scores);
-        setMatchResult({ winner: payload.winner, finalScores: payload.final_scores });
-        return;
-      }
-
-      if (payload.type === "MATCH_CANCELLED") {
-        setQuestion(null);
-        setFeedback(payload.reason);
-        return;
-      }
-
-      if (payload.type === "ERROR") {
-        setFeedback(payload.message);
-      }
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-    };
-
-    return () => {
-      if (timerIntervalRef.current !== null) {
-        window.clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
-      ws.close();
-      wsRef.current = null;
-    };
-  }, [authPayload, matchId, wsUrl]);
-
-  useEffect(() => {
-    if (!question) {
-      if (timerIntervalRef.current !== null) {
-        window.clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
-      return;
-    }
-
-    const deadline = new Date(question.deadline_at).getTime();
-    const update = () => {
-      setRemainingMs(Math.max(deadline - Date.now(), 0));
-    };
-
-    update();
-    timerIntervalRef.current = window.setInterval(update, 250);
-
-    return () => {
-      if (timerIntervalRef.current !== null) {
-        window.clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
-    };
-  }, [question]);
-
-  function send(payload: ClientToServerEvent) {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setFeedback("Realtime connection is not open.");
-      return;
-    }
-    ws.send(JSON.stringify(payload));
-  }
-
-  function handleAnswer(optionId: string) {
-    if (!question || selectedOptionId) {
-      return;
-    }
-    setSelectedOptionId(optionId);
-    send({
-      type: "ANSWER",
-      match_id: matchId,
-      question_id: question.question_id,
-      selected_option: optionId,
+  const refreshSnapshot = useCallback(async () => {
+    const response = await fetch(`/api/pvp/arena/${matchId}/snapshot`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
     });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      setFeedback(payload.error ?? "Failed to load arena snapshot.");
+      setIsConnected(false);
+      return;
+    }
+
+    const payload = (await response.json()) as SnapshotResponse;
+    setIsConnected(true);
+    setQuestions(payload.questions ?? []);
+    setScores(payload.scores ?? {});
+
+    if (payload.arena_status === "finished") {
+      const finalScores = payload.scores ?? {};
+      const participants = Object.keys(finalScores);
+      const winner =
+        participants.length < 2
+          ? participants[0] ?? null
+          : finalScores[participants[0]] === finalScores[participants[1]]
+            ? null
+            : finalScores[participants[0]] > finalScores[participants[1]]
+              ? participants[0]
+              : participants[1];
+
+      setMatchResult({ winner, finalScores });
+      setCurrentQuestion(null);
+    }
+  }, [matchId]);
+
+  useEffect(() => {
+    let isDisposed = false;
+
+    const run = async () => {
+      if (isDisposed) {
+        return;
+      }
+      await refreshSnapshot();
+    };
+
+    void run();
+    const intervalId = window.setInterval(() => {
+      void run();
+    }, 2000);
+
+    return () => {
+      isDisposed = true;
+      window.clearInterval(intervalId);
+      if (timerIntervalRef.current !== null) {
+        window.clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [refreshSnapshot]);
+
+  useEffect(() => {
+    if (questions.length === 0) {
+      return;
+    }
+
+    const tick = () => {
+      const nowMs = Date.now();
+      const active = questions.find((question) => {
+        const startMs = new Date(question.question_start_time).getTime();
+        const endMs = startMs + question.time_limit * 1000;
+        return nowMs >= startMs && nowMs < endMs;
+      });
+
+      if (!active) {
+        const lastQuestion = questions[questions.length - 1];
+        const finishedAt = new Date(lastQuestion.question_start_time).getTime() + lastQuestion.time_limit * 1000;
+        if (nowMs >= finishedAt) {
+          const participants = Object.keys(scores);
+          const winner =
+            participants.length < 2
+              ? participants[0] ?? null
+              : scores[participants[0]] === scores[participants[1]]
+                ? null
+                : scores[participants[0]] > scores[participants[1]]
+                  ? participants[0]
+                  : participants[1];
+
+          setMatchResult({ winner, finalScores: scores });
+          setCurrentQuestion(null);
+          setRemainingMs(0);
+          return;
+        }
+
+        setCurrentQuestion(null);
+        setRemainingMs(0);
+        return;
+      }
+
+      if (!currentQuestion || currentQuestion.question_id !== active.question_id) {
+        setCurrentQuestion(active);
+        setSelectedOptionId(null);
+      }
+
+      const deadlineMs = new Date(active.question_start_time).getTime() + active.time_limit * 1000;
+      setRemainingMs(Math.max(deadlineMs - nowMs, 0));
+    };
+
+    tick();
+    timerIntervalRef.current = window.setInterval(tick, 250);
+
+    return () => {
+      if (timerIntervalRef.current !== null) {
+        window.clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [currentQuestion, questions, scores]);
+
+  async function handleAnswer(optionId: string) {
+    if (!currentQuestion) {
+      return;
+    }
+
+    if (answeredQuestionIds[currentQuestion.question_id]) {
+      return;
+    }
+
+    setSelectedOptionId(optionId);
+
+    const response = await fetch(`/api/pvp/arena/${matchId}/answer`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        questionId: currentQuestion.question_id,
+        optionId,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      setFeedback(payload.error ?? "Failed to submit answer.");
+      return;
+    }
+
+    setAnsweredQuestionIds((prev) => ({ ...prev, [currentQuestion.question_id]: true }));
+    setFeedback("Answer submitted.");
+    await refreshSnapshot();
   }
 
   const myScore = scores[userId] ?? 0;
@@ -157,39 +204,43 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
     <div className="space-y-4">
       <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm">
         <p className="text-slate-700">Match: {matchId}</p>
-        <p className="text-slate-700">{isConnected ? "Connected" : "Disconnected"}</p>
+        <p className="text-slate-700">{isConnected ? "Server polling active" : "Polling disconnected"}</p>
       </div>
 
-      {countdown !== null ? <p className="text-sm text-slate-600">Match found. Countdown: {countdown}s</p> : null}
-
-      {question ? (
+      {currentQuestion ? (
         <section className="space-y-3 rounded-lg border border-slate-200 p-4">
           <div className="flex items-center justify-between text-sm">
             <p className="font-medium text-slate-900">
-              Question {question.question_no}/{question.total_questions}
+              Question {currentQuestion.question_no}/{questions.length}
             </p>
             <p className="font-semibold text-amber-700">Time left: {secondsLeft}s</p>
           </div>
-          <p className="text-slate-900">{question.text}</p>
+          <p className="text-slate-900">{currentQuestion.text}</p>
           <div className="grid gap-2">
-            {question.options.map((option) => (
+            {currentQuestion.options.map((option) => (
               <button
                 key={option.id}
                 type="button"
-                onClick={() => handleAnswer(option.id)}
-                disabled={selectedOptionId !== null || remainingMs <= 0}
+                onClick={() => {
+                  void handleAnswer(option.id);
+                }}
+                disabled={selectedOptionId !== null || remainingMs <= 0 || Boolean(answeredQuestionIds[currentQuestion.question_id])}
                 className={`rounded-md border px-3 py-2 text-left text-sm ${
                   selectedOptionId === option.id
                     ? "border-slate-900 bg-slate-900 text-white"
                     : "border-slate-300 bg-white text-slate-800"
-                } disabled:cursor-not-allowed disabled:opacity-60`}
+                } disabled:opacity-60`}
               >
                 {option.text}
               </button>
             ))}
           </div>
         </section>
-      ) : null}
+      ) : (
+        <section className="rounded-lg border border-slate-200 p-4 text-sm text-slate-700">
+          Waiting for next question...
+        </section>
+      )}
 
       <section className="rounded-lg border border-slate-200 p-4">
         <h2 className="text-sm font-semibold text-slate-900">Score</h2>
@@ -208,4 +259,3 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
     </div>
   );
 }
-
