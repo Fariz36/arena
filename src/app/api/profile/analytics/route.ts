@@ -11,6 +11,26 @@ type AnalyticsRow = {
   difficulty_breakdown: unknown;
 };
 
+type RpcCastError = {
+  Error: string;
+};
+
+function normalizeAnalyticsRow(data: AnalyticsRow | AnalyticsRow[] | RpcCastError | null): AnalyticsRow | null {
+  if (!data) {
+    return null;
+  }
+
+  if (Array.isArray(data)) {
+    return data[0] ?? null;
+  }
+
+  if ("Error" in data) {
+    return null;
+  }
+
+  return data;
+}
+
 export async function GET(request: Request) {
   const supabase = await createClient();
   const {
@@ -45,8 +65,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: allCategoryError.message }, { status: 400 });
   }
 
-  const row = analyticsData?.[0] ?? null;
-  const allCategoryRow = allCategoryData?.[0] ?? null;
+  const row = normalizeAnalyticsRow(analyticsData as AnalyticsRow | AnalyticsRow[] | RpcCastError | null);
+  const allCategoryRow = normalizeAnalyticsRow(allCategoryData as AnalyticsRow | AnalyticsRow[] | RpcCastError | null);
 
   const allCategories = Array.isArray(allCategoryRow?.category_breakdown)
     ? (allCategoryRow.category_breakdown as Array<{ category?: string }>)

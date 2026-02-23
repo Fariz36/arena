@@ -17,6 +17,17 @@ type MatchHistoryRow = {
   total_count: number;
 };
 
+type RpcCastError = {
+  Error: string;
+};
+
+function normalizeHistoryRows(data: MatchHistoryRow[] | RpcCastError | null): MatchHistoryRow[] {
+  if (!data || !Array.isArray(data)) {
+    return [];
+  }
+  return data;
+}
+
 export async function GET(request: Request) {
   const supabase = await createClient();
   const {
@@ -46,7 +57,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  const rows = data ?? [];
+  const rows = normalizeHistoryRows(data as MatchHistoryRow[] | RpcCastError | null);
   const total = rows.length > 0 ? rows[0].total_count : 0;
 
   return NextResponse.json({ rows, total });

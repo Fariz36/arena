@@ -159,43 +159,6 @@ export async function createQuestionAction(
     return { error: criteriaError?.message ?? "Selected criteria is invalid.", success: null };
   }
 
-  const { data: existingOptions, error: existingOptionsError } = await supabase
-    .from("question_options")
-    .select("option_text, is_correct, position")
-    .eq("question_id", questionId)
-    .order("position", { ascending: true })
-    .returns<Array<{ option_text: string; is_correct: boolean; position: number }>>();
-  if (existingOptionsError) {
-    return { error: existingOptionsError.message, success: null };
-  }
-
-  const { count: answerCount, error: answerCountError } = await supabase
-    .from("answers")
-    .select("id", { head: true, count: "exact" })
-    .eq("question_id", questionId);
-  if (answerCountError) {
-    return { error: answerCountError.message, success: null };
-  }
-
-  const hasAnswers = (answerCount ?? 0) > 0;
-  const existingNormalized = (existingOptions ?? []).map((option) => ({
-    text: option.option_text,
-    isCorrect: option.is_correct,
-  }));
-  const optionsChanged =
-    existingNormalized.length !== normalizedOptions.length ||
-    existingNormalized.some(
-      (option, index) =>
-        option.text !== normalizedOptions[index]?.text || option.isCorrect !== normalizedOptions[index]?.isCorrect,
-    );
-
-  if (hasAnswers && optionsChanged) {
-    return {
-      error: "This question already has submitted answers. Editing answer options is disabled to preserve match history.",
-      success: null,
-    };
-  }
-
   const uploadResult = await uploadImageFromSource({
     supabase,
     userId: user.id,
