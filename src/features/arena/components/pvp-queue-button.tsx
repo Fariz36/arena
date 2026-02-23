@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -26,6 +26,9 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
   void username;
 
   const router = useRouter();
+  const realtimeActiveRef = useRef(false);
+  const redirectingRef = useRef(false);
+  const channelKeyRef = useRef(crypto.randomUUID());
   const [connectionStatus, setConnectionStatus] = useState<"CONNECTING" | "REALTIME" | "POLLING">("CONNECTING");
   const [inQueue, setInQueue] = useState(false);
   const [queueCount, setQueueCount] = useState<number | null>(null);
@@ -47,14 +50,21 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
     }
 
     const row = (await response.json()) as QueueStatus;
-    setConnectionStatus("POLLING");
     setInQueue(row.in_queue);
     setQueueCount(row.queue_count);
 
     if (row.active_arena_id) {
+      if (!redirectingRef.current) {
+        redirectingRef.current = true;
+        const targetPath = `/arena/${row.active_arena_id}`;
+        router.replace(targetPath);
+        window.setTimeout(() => {
+          if (window.location.pathname !== targetPath) {
+            window.location.assign(targetPath);
+          }
+        }, 800);
+      }
       setFeedback("Match found. Redirecting to arena...");
-      router.replace(`/arena/${row.active_arena_id}`);
-      router.refresh();
       return;
     }
 
@@ -76,49 +86,84 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
       await refreshStatus();
     };
 
-    void run();
+    const setupRealtimeAuth = async () => {
+      const response = await fetch("/api/pvp/realtime/token", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
 
-    const queueChannel = supabase
-      .channel(`queue-status-${userId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "match_queue" },
-        () => {
-          void run();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "arena_players", filter: `user_id=eq.${userId}` },
-        () => {
-          void run();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "arenas" },
-        () => {
-          void run();
-        },
-      )
-      .subscribe((status) => {
+      if (!response.ok) {
+        throw new Error("Failed to initialize realtime auth.");
+      }
+
+      const payload = (await response.json()) as { access_token?: string };
+      const accessToken = String(payload.access_token ?? "");
+      if (!accessToken) {
+        throw new Error("Missing realtime access token.");
+      }
+
+      supabase.realtime.setAuth(accessToken);
+    };
+
+    void run();
+    let queueChannel:
+      | ReturnType<ReturnType<typeof createClient>["channel"]>
+      | null = null;
+
+    const initRealtime = async () => {
+      try {
+        await setupRealtimeAuth();
+      } catch (error) {
+        if (isDisposed) {
+          return;
+        }
+        realtimeActiveRef.current = false;
+        setConnectionStatus("POLLING");
+        setRealtimeError(error instanceof Error ? error.message : "Failed to initialize realtime.");
+        return;
+      }
+      if (isDisposed) {
+        return;
+      }
+
+      queueChannel = supabase
+        .channel(`queue-status-${userId}-${channelKeyRef.current}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "match_queue" },
+          () => {
+            void run();
+          },
+        )
+        .subscribe((status, error) => {
         if (status === "SUBSCRIBED") {
+          realtimeActiveRef.current = true;
           setConnectionStatus("REALTIME");
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          realtimeActiveRef.current = false;
           setConnectionStatus("POLLING");
+          void error;
         }
       });
+    };
+
+    void initRealtime();
 
     const fallbackIntervalId = window.setInterval(() => {
-      void run();
+      if (!realtimeActiveRef.current) {
+        void run();
+      }
     }, 10000);
 
     return () => {
       isDisposed = true;
       window.clearInterval(fallbackIntervalId);
-      void supabase.removeChannel(queueChannel);
+      if (queueChannel) {
+        void supabase.removeChannel(queueChannel);
+      }
     };
   }, [refreshStatus, userId]);
 
@@ -146,8 +191,16 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
     setFeedback(payload.message || "Queued. Waiting for opponent.");
 
     if (payload.status.active_arena_id) {
-      router.replace(`/arena/${payload.status.active_arena_id}`);
-      router.refresh();
+      if (!redirectingRef.current) {
+        redirectingRef.current = true;
+        const targetPath = `/arena/${payload.status.active_arena_id}`;
+        router.replace(targetPath);
+        window.setTimeout(() => {
+          if (window.location.pathname !== targetPath) {
+            window.location.assign(targetPath);
+          }
+        }, 800);
+      }
       return;
     }
 

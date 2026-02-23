@@ -34,6 +34,8 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
   void username;
 
   const timerIntervalRef = useRef<number | null>(null);
+  const realtimeActiveRef = useRef(false);
+  const channelKeyRef = useRef(crypto.randomUUID());
   const [connectionMode, setConnectionMode] = useState<"CONNECTING" | "REALTIME" | "POLLING">("CONNECTING");
 
   const [isConnected, setIsConnected] = useState(false);
@@ -93,49 +95,84 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
       await refreshSnapshot();
     };
 
-    void run();
+    const setupRealtimeAuth = async () => {
+      const response = await fetch("/api/pvp/realtime/token", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
 
-    const arenaChannel = supabase
-      .channel(`arena-live-${matchId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "answers", filter: `arena_id=eq.${matchId}` },
-        () => {
-          void run();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "arena_players", filter: `arena_id=eq.${matchId}` },
-        () => {
-          void run();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "arenas", filter: `id=eq.${matchId}` },
-        () => {
-          void run();
-        },
-      )
-      .subscribe((status) => {
+      if (!response.ok) {
+        throw new Error("Failed to initialize realtime auth.");
+      }
+
+      const payload = (await response.json()) as { access_token?: string };
+      const accessToken = String(payload.access_token ?? "");
+      if (!accessToken) {
+        throw new Error("Missing realtime access token.");
+      }
+
+      supabase.realtime.setAuth(accessToken);
+    };
+
+    void run();
+    let arenaChannel:
+      | ReturnType<ReturnType<typeof createClient>["channel"]>
+      | null = null;
+
+    const initRealtime = async () => {
+      try {
+        await setupRealtimeAuth();
+      } catch (error) {
+        if (isDisposed) {
+          return;
+        }
+        realtimeActiveRef.current = false;
+        setConnectionMode("POLLING");
+        setRealtimeError(error instanceof Error ? error.message : "Failed to initialize realtime.");
+        return;
+      }
+      if (isDisposed) {
+        return;
+      }
+
+      arenaChannel = supabase
+        .channel(`arena-live-${matchId}-${channelKeyRef.current}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "answers", filter: `arena_id=eq.${matchId}` },
+          () => {
+            void run();
+          },
+        )
+        .subscribe((status, error) => {
         if (status === "SUBSCRIBED") {
+          realtimeActiveRef.current = true;
           setConnectionMode("REALTIME");
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          realtimeActiveRef.current = false;
           setConnectionMode("POLLING");
+          void error;
         }
       });
+    };
+
+    void initRealtime();
 
     const fallbackIntervalId = window.setInterval(() => {
-      void run();
+      if (!realtimeActiveRef.current) {
+        void run();
+      }
     }, 10000);
 
     return () => {
       isDisposed = true;
       window.clearInterval(fallbackIntervalId);
-      void supabase.removeChannel(arenaChannel);
+      if (arenaChannel) {
+        void supabase.removeChannel(arenaChannel);
+      }
       if (timerIntervalRef.current !== null) {
         window.clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
@@ -150,10 +187,14 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
 
     const tick = () => {
       const nowMs = Date.now();
-      const active = questions.find((question) => {
+      const startedQuestions = questions
+        .filter((question) => nowMs >= new Date(question.question_start_time).getTime())
+        .sort((a, b) => b.question_no - a.question_no);
+
+      const active = startedQuestions.find((question) => {
         const startMs = new Date(question.question_start_time).getTime();
         const endMs = startMs + question.time_limit * 1000;
-        return nowMs >= startMs && nowMs < endMs;
+        return nowMs < endMs;
       });
 
       if (!active) {
