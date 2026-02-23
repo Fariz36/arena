@@ -57,14 +57,16 @@ export default function ImageUploadDropzone({ inputName, selectedFileName, onFil
           const droppedFile = event.dataTransfer.files?.[0] ?? null;
           setInputFile(droppedFile);
         }}
-        className={`w-full rounded-md border border-dashed px-4 py-6 text-sm transition ${
-          isDragOver ? "border-slate-900 bg-slate-100 text-slate-900" : "border-slate-300 text-slate-600"
+        className={`w-full rounded-xl border border-dashed px-4 py-6 text-sm transition ${
+          isDragOver
+            ? "border-indigo-300 bg-indigo-400/10 text-indigo-100"
+            : "border-white/25 bg-white/5 text-slate-300 hover:border-indigo-300/50 hover:bg-indigo-400/5"
         }`}
       >
         Drag and drop image here, or click to browse
       </button>
 
-      {selectedFileName ? <p className="text-xs text-slate-500">Selected: {selectedFileName}</p> : null}
+      {selectedFileName ? <p className="text-xs text-slate-400">Selected: {selectedFileName}</p> : null}
     </div>
   );
 }

@@ -1,8 +1,16 @@
-export default function HistoryPage() {
-  return (
-    <main className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-semibold text-slate-900">Match History</h1>
-      <p className="mt-2 text-sm text-slate-600">History table page placeholder.</p>
-    </main>
-  );
+import { redirect } from "next/navigation";
+import HistoryPageClient from "@/features/history/components/history-page-client";
+import { createClient } from "@/lib/supabase/server";
+
+export default async function HistoryPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  return <HistoryPageClient email={user.email} />;
 }

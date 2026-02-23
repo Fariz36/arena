@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import Stack from "@mui/material/Stack";
 import PvpArenaClient from "@/features/arena/components/pvp-arena-client";
+import { AppPageCard, AppPageHeading } from "@/components/ui/page-shell";
 import { createClient } from "@/lib/supabase/server";
 
 type ArenaPageProps = {
@@ -24,9 +26,11 @@ export default async function ArenaPage({ params }: ArenaPageProps) {
     .maybeSingle<{ username: string }>();
 
   return (
-    <main className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-semibold text-slate-900">Arena {arenaId}</h1>
+    <AppPageCard>
+      <Stack spacing={3}>
+      <AppPageHeading title={`Arena ${arenaId}`} />
       <PvpArenaClient matchId={arenaId} userId={user.id} username={profile?.username ?? "player"} />
-    </main>
+      </Stack>
+    </AppPageCard>
   );
 }

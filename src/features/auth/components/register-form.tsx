@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
+import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { registerAction } from "@/features/auth/actions";
 
 const INITIAL_STATE = { error: null as string | null };
@@ -10,64 +15,25 @@ export default function RegisterForm() {
   const [state, formAction, pending] = useActionState(registerAction, INITIAL_STATE);
 
   return (
-    <form action={formAction} className="space-y-4">
-      <div className="space-y-1">
-        <label htmlFor="username" className="block text-sm font-medium text-slate-700">
-          Username
-        </label>
-        <input
-          id="username"
-          name="username"
-          type="text"
-          required
-          minLength={3}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </div>
+    <Stack component="form" action={formAction} spacing={2}>
+      <TextField id="username" name="username" type="text" label="Username" required inputProps={{ minLength: 3 }} size="small" fullWidth />
 
-      <div className="space-y-1">
-        <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-          Email
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </div>
+      <TextField id="email" name="email" type="email" label="Email" required size="small" fullWidth />
 
-      <div className="space-y-1">
-        <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-          Password
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          minLength={6}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </div>
+      <TextField id="password" name="password" type="password" label="Password" required inputProps={{ minLength: 6 }} size="small" fullWidth />
 
-      {state.error ? <p className="text-sm text-red-600">{state.error}</p> : null}
+      {state.error ? <Alert severity="error">{state.error}</Alert> : null}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-      >
+      <Button type="submit" disabled={pending} variant="contained" fullWidth>
         {pending ? "Creating account..." : "Create account"}
-      </button>
+      </Button>
 
-      <p className="text-sm text-slate-600">
+      <Typography variant="body2" color="text.secondary">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-slate-900 underline">
+        <Button component={Link} href="/login" variant="text" size="small" sx={{ minWidth: 0, px: 0.5 }}>
           Sign in
-        </Link>
-      </p>
-    </form>
+        </Button>
+      </Typography>
+    </Stack>
   );
 }

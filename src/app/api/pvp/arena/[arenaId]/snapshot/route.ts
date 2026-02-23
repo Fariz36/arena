@@ -22,6 +22,12 @@ type ArenaPlayerRow = {
   total_score: number;
 };
 
+type RatingChangeRow = {
+  rating_before: number;
+  rating_after: number;
+  rating_delta: number;
+};
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ arenaId: string }> },
@@ -37,7 +43,12 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [{ data: questionRows, error: questionsError }, { data: playerRows, error: playersError }, { data: arenaRow, error: arenaError }] = await Promise.all([
+  const [
+    { data: questionRows, error: questionsError },
+    { data: playerRows, error: playersError },
+    { data: arenaRow, error: arenaError },
+    { data: ratingChangeRow, error: ratingChangeError },
+  ] = await Promise.all([
     supabase
       .from("arena_questions")
       .select("question_id, question_no, question_start_time, questions(question_text, time_limit_seconds, image_url, question_options(id, option_text, position))")
@@ -54,6 +65,12 @@ export async function GET(
       .select("status")
       .eq("id", arenaId)
       .maybeSingle<{ status: "waiting" | "active" | "finished" }>(),
+    supabase
+      .from("arena_rating_changes")
+      .select("rating_before, rating_after, rating_delta")
+      .eq("arena_id", arenaId)
+      .eq("user_id", user.id)
+      .maybeSingle<RatingChangeRow>(),
   ]);
 
   if (questionsError) {
@@ -66,6 +83,10 @@ export async function GET(
 
   if (arenaError) {
     return NextResponse.json({ error: arenaError.message }, { status: 400 });
+  }
+
+  if (ratingChangeError) {
+    return NextResponse.json({ error: ratingChangeError.message }, { status: 400 });
   }
 
   const questions = (questionRows ?? [])
@@ -91,5 +112,12 @@ export async function GET(
     questions,
     scores,
     arena_status: arenaRow?.status ?? null,
+    rating_change: ratingChangeRow
+      ? {
+          before: ratingChangeRow.rating_before,
+          after: ratingChangeRow.rating_after,
+          delta: ratingChangeRow.rating_delta,
+        }
+      : null,
   });
 }

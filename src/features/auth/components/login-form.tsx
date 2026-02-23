@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
+import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { loginAction } from "@/features/auth/actions";
 
 type LoginFormProps = {
@@ -14,51 +19,25 @@ export default function LoginForm({ nextPath }: LoginFormProps) {
   const [state, formAction, pending] = useActionState(loginAction, INITIAL_STATE);
 
   return (
-    <form action={formAction} className="space-y-4">
+    <Stack component="form" action={formAction} spacing={2}>
       <input type="hidden" name="next" value={nextPath} />
 
-      <div className="space-y-1">
-        <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-          Email
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </div>
+      <TextField id="email" name="email" type="email" label="Email" required size="small" fullWidth />
 
-      <div className="space-y-1">
-        <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-          Password
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </div>
+      <TextField id="password" name="password" type="password" label="Password" required size="small" fullWidth />
 
-      {state.error ? <p className="text-sm text-red-600">{state.error}</p> : null}
+      {state.error ? <Alert severity="error">{state.error}</Alert> : null}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-      >
+      <Button type="submit" disabled={pending} variant="contained" fullWidth>
         {pending ? "Signing in..." : "Sign in"}
-      </button>
+      </Button>
 
-      <p className="text-sm text-slate-600">
+      <Typography variant="body2" color="text.secondary">
         Don&apos;t have an account?{" "}
-        <Link href="/register" className="font-medium text-slate-900 underline">
+        <Button component={Link} href="/register" variant="text" size="small" sx={{ minWidth: 0, px: 0.5 }}>
           Register
-        </Link>
-      </p>
-    </form>
+        </Button>
+      </Typography>
+    </Stack>
   );
 }

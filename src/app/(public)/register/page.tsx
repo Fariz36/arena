@@ -1,11 +1,12 @@
 import RegisterForm from "@/features/auth/components/register-form";
+import Stack from "@mui/material/Stack";
+import { AppPageHeading } from "@/components/ui/page-shell";
 
 export default function RegisterPage() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold text-slate-900">Create account</h1>
-      <p className="text-sm text-slate-600">Join QuizArena as a player.</p>
+    <Stack spacing={3}>
+      <AppPageHeading title="Create account" description="Join QuizArena as a player." />
       <RegisterForm />
-    </div>
+    </Stack>
   );
 }

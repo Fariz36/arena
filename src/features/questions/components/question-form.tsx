@@ -42,6 +42,10 @@ const ADD_CRITERIA_INITIAL_STATE: AddCriteriaActionState = {
 
 export default function QuestionForm({ initialCriteriaOptions }: QuestionFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
+  const inputClass =
+    "w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] outline-none transition focus:border-indigo-400/70 focus:ring-2 focus:ring-indigo-400/20";
+  const labelClass = "space-y-1.5 text-sm";
+  const labelTextClass = "font-semibold tracking-tight text-slate-200";
 
   const [title, setTitle] = useState("");
   const [questionText, setQuestionText] = useState("");
@@ -151,21 +155,25 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
   }
 
   return (
-    <form ref={formRef} action={createFormAction} className="space-y-5">
+    <form
+      ref={formRef}
+      action={createFormAction}
+      className="space-y-5 rounded-2xl border border-white/10 bg-slate-950/30 p-4 backdrop-blur-sm sm:p-5"
+    >
       <div className="grid gap-4 md:grid-cols-2">
-        <label className="space-y-1 text-sm">
-          <span className="font-medium text-slate-700">Title</span>
+        <label className={labelClass}>
+          <span className={labelTextClass}>Title</span>
           <input
             required
             name="title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2"
+            className={inputClass}
           />
         </label>
 
-        <label className="space-y-1 text-sm">
-          <span className="font-medium text-slate-700">Criteria</span>
+        <label className={labelClass}>
+          <span className={labelTextClass}>Criteria</span>
           <select
             required
             name="criteriaId"
@@ -179,7 +187,7 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
               setShowAddCriteria(false);
               setCriteriaId(value);
             }}
-            className="w-full rounded-md border border-slate-300 px-3 py-2"
+            className={inputClass}
           >
             <option value="">Select criteria</option>
             {criteriaOptions.map((item) => (
@@ -198,30 +206,30 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
                 value={newCriteriaName}
                 onChange={(event) => setNewCriteriaName(event.target.value)}
                 placeholder="New criteria name"
-                className="min-w-60 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className={`${inputClass} min-w-60 flex-1`}
                 required
               />
               <button
                 type="button"
                 onClick={handleAddCriteria}
                 disabled={isAddingCriteria}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60"
+                className="rounded-xl border border-white/25 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-indigo-300/60 hover:bg-indigo-400/10 disabled:opacity-60"
               >
                 {isAddingCriteria ? "Adding..." : "Add Criteria"}
               </button>
             </div>
-            {criteriaState.error ? <p className="text-sm text-red-600">{criteriaState.error}</p> : null}
-            {criteriaState.success ? <p className="text-sm text-emerald-600">{criteriaState.success}</p> : null}
+            {criteriaState.error ? <p className="text-sm text-red-300">{criteriaState.error}</p> : null}
+            {criteriaState.success ? <p className="text-sm text-emerald-300">{criteriaState.success}</p> : null}
           </div>
         ) : null}
 
-        <label className="space-y-1 text-sm">
-          <span className="font-medium text-slate-700">Difficulty</span>
+        <label className={labelClass}>
+          <span className={labelTextClass}>Difficulty</span>
           <select
             name="difficulty"
             value={difficulty}
             onChange={(event) => setDifficulty(event.target.value as Difficulty)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2"
+            className={inputClass}
           >
             <option value="easy">Easy</option>
             <option value="medium">Medium</option>
@@ -229,8 +237,8 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
           </select>
         </label>
 
-        <label className="space-y-1 text-sm">
-          <span className="font-medium text-slate-700">Time Limit (seconds)</span>
+        <label className={labelClass}>
+          <span className={labelTextClass}>Time Limit (seconds)</span>
           <input
             type="number"
             min={5}
@@ -239,12 +247,12 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
             name="timeLimitSeconds"
             value={timeLimitSeconds}
             onChange={(event) => setTimeLimitSeconds(Number(event.target.value))}
-            className="w-full rounded-md border border-slate-300 px-3 py-2"
+            className={inputClass}
           />
         </label>
 
-        <label className="space-y-1 text-sm md:col-span-2">
-          <span className="font-medium text-slate-700">Image Upload (optional)</span>
+        <label className={`${labelClass} md:col-span-2`}>
+          <span className={labelTextClass}>Image Upload (optional)</span>
           <ImageUploadDropzone
             inputName="imageFile"
             selectedFileName={imageFile?.name ?? null}
@@ -255,15 +263,15 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
         </label>
       </div>
 
-      <label className="space-y-1 text-sm">
-        <span className="font-medium text-slate-700">Question Text (Markdown supported)</span>
+      <label className={labelClass}>
+        <span className={labelTextClass}>Question Text (Markdown supported)</span>
         <textarea
           required
           rows={5}
           name="questionText"
           value={questionText}
           onChange={(event) => setQuestionText(event.target.value)}
-          className="w-full rounded-md border border-slate-300 px-3 py-2"
+          className={inputClass}
         />
       </label>
 
@@ -271,12 +279,12 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Answer Options</h2>
+          <h2 className="text-base font-semibold text-slate-100">Answer Options</h2>
           <button
             type="button"
             onClick={addOption}
             disabled={options.length >= MAX_OPTIONS}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
+            className="rounded-xl border border-white/25 bg-white/5 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:border-indigo-300/60 hover:bg-indigo-400/10 disabled:opacity-50"
           >
             Add Option
           </button>
@@ -286,9 +294,9 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
           {options.map((option, index) => (
             <div
               key={option.id}
-              className="grid gap-2 rounded-md border border-slate-200 p-3 md:grid-cols-[auto,1fr,auto] md:items-center"
+              className="grid gap-2 rounded-xl border border-white/10 bg-white/5 p-3 md:grid-cols-[auto,1fr,auto] md:items-center"
             >
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+              <label className="inline-flex items-center gap-2 text-sm text-slate-200">
                 <input
                   type="radio"
                   name="correctOption"
@@ -303,14 +311,14 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
                 value={option.text}
                 onChange={(event) => updateOptionText(option.id, event.target.value)}
                 placeholder={`Option ${index + 1}`}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className={inputClass}
               />
 
               <button
                 type="button"
                 onClick={() => removeOption(option.id)}
                 disabled={options.length <= MIN_OPTIONS}
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
+                className="rounded-xl border border-white/25 bg-white/5 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:border-rose-300/60 hover:bg-rose-400/10 disabled:opacity-50"
               >
                 Remove
               </button>
@@ -319,7 +327,7 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
         </div>
       </div>
 
-      <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+      <label className="inline-flex items-center gap-2 text-sm text-slate-200">
         <input
           type="checkbox"
           name="isActive"
@@ -329,13 +337,13 @@ export default function QuestionForm({ initialCriteriaOptions }: QuestionFormPro
         Set question as active after creation
       </label>
 
-      {createState.error ? <p className="text-sm text-red-600">{createState.error}</p> : null}
-      {createState.success ? <p className="text-sm text-emerald-600">{createState.success}</p> : null}
+      {createState.error ? <p className="text-sm text-red-300">{createState.error}</p> : null}
+      {createState.success ? <p className="text-sm text-emerald-300">{createState.success}</p> : null}
 
       <button
         type="submit"
         disabled={createPending}
-        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+        className="rounded-xl border border-indigo-400/40 bg-gradient-to-br from-indigo-500 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(79,70,229,0.35)] transition hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-60"
       >
         {createPending ? "Saving..." : "Save Question"}
       </button>

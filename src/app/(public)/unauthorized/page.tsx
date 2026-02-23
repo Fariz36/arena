@@ -1,13 +1,20 @@
 import Link from "next/link";
+import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 
 export default function UnauthorizedPage() {
   return (
-    <div className="space-y-4 text-center">
-      <h1 className="text-2xl font-semibold text-slate-900">403 - Unauthorized</h1>
-      <p className="text-sm text-slate-600">You do not have permission to access this page.</p>
-      <Link href="/dashboard" className="inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-        Back to dashboard
+    <Stack spacing={3} textAlign="center">
+      <Typography variant="h4" component="h1">
+        403 - Unauthorized
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        You do not have permission to access this page.
+      </Typography>
+      <Link href="/dashboard">
+        <Button variant="contained">Back to dashboard</Button>
       </Link>
-    </div>
+    </Stack>
   );
 }

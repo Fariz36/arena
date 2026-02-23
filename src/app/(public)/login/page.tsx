@@ -1,4 +1,6 @@
 import LoginForm from "@/features/auth/components/login-form";
+import Stack from "@mui/material/Stack";
+import { AppPageHeading } from "@/components/ui/page-shell";
 
 type LoginPageProps = {
   searchParams: Promise<{ next?: string }>;
@@ -17,10 +19,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const nextPath = sanitizeNextPath(params.next);
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold text-slate-900">Sign in</h1>
-      <p className="text-sm text-slate-600">Access your QuizArena account.</p>
+    <Stack spacing={3}>
+      <AppPageHeading title="Sign in" description="Access your QuizArena account." />
       <LoginForm nextPath={nextPath} />
-    </div>
+    </Stack>
   );
 }

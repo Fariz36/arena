@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 import { createClient } from "@/lib/supabase/client";
 
 type PvpQueueButtonProps = {
@@ -22,7 +28,6 @@ type JoinQueueResponse = {
 };
 
 export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps) {
-  void userId;
   void username;
 
   const router = useRouter();
@@ -34,6 +39,7 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
   const [queueCount, setQueueCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [realtimeError, setRealtimeError] = useState<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
     const response = await fetch("/api/pvp/queue/status", {
@@ -140,11 +146,13 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
         if (status === "SUBSCRIBED") {
           realtimeActiveRef.current = true;
           setConnectionStatus("REALTIME");
+          setRealtimeError(null);
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           realtimeActiveRef.current = false;
           setConnectionStatus("POLLING");
+          setRealtimeError(`channel status: ${status}`);
           void error;
         }
       });
@@ -236,42 +244,120 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
       : connectionStatus === "REALTIME"
         ? "realtime"
         : "server polling";
-  const connectionDotClass =
-    connectionStatus === "CONNECTING" ? "bg-amber-500" : connectionStatus === "REALTIME" ? "bg-emerald-500" : "bg-slate-400";
+  const connectionColor = connectionStatus === "REALTIME" ? "success" : connectionStatus === "CONNECTING" ? "warning" : "default";
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-xs">
-        <span className={`inline-block h-2.5 w-2.5 rounded-full ${connectionDotClass}`} />
-        <span className="text-slate-600">Status: {connectionLabel}</span>
-      </div>
+    <Stack spacing={1.5}>
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.56)", fontWeight: 600 }}>
+          Status:
+        </Typography>
+        <Chip
+          size="small"
+          color={connectionColor}
+          label={connectionLabel}
+          sx={{
+            height: 22,
+            fontSize: "0.68rem",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}
+        />
+      </Stack>
 
-      {queueCount !== null ? <p className="text-xs text-slate-500">Players in queue: {queueCount}</p> : null}
+      {queueCount !== null ? (
+        <Box
+          sx={{
+            display: "inline-flex",
+            width: "fit-content",
+            px: 1.1,
+            py: 0.45,
+            borderRadius: "999px",
+            border: "1px solid rgba(255,255,255,0.11)",
+            bgcolor: "rgba(255,255,255,0.04)",
+          }}
+        >
+          <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.74)", fontWeight: 600 }}>
+            Players in queue: {queueCount}
+          </Typography>
+        </Box>
+      ) : null}
 
-      <div className="flex gap-2">
-        <button
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        <Button
           type="button"
           onClick={() => {
             void handleJoinQueue();
           }}
           disabled={loading || inQueue}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          variant="contained"
+          sx={{
+            textTransform: "none",
+            borderRadius: "10px",
+            fontWeight: 700,
+            px: 1.75,
+            background: "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
+            boxShadow: "0 8px 18px rgba(79,70,229,0.35)",
+            "&:hover": {
+              background: "linear-gradient(135deg, #4338ca 0%, #4f46e5 100%)",
+            },
+            "&.Mui-disabled": {
+              color: "rgba(255,255,255,0.55)",
+              background: "rgba(255,255,255,0.16)",
+            },
+          }}
         >
           {inQueue ? "In Queue" : loading ? "Joining Queue..." : "Join Queue"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={() => {
             void handleLeaveQueue();
           }}
           disabled={loading || !inQueue}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+          variant="outlined"
+          sx={{
+            textTransform: "none",
+            borderRadius: "10px",
+            fontWeight: 700,
+            px: 1.75,
+            color: "rgba(255,255,255,0.82)",
+            borderColor: "rgba(255,255,255,0.25)",
+            "&:hover": {
+              borderColor: "rgba(248,113,113,0.48)",
+              color: "#fca5a5",
+              bgcolor: "rgba(239,68,68,0.12)",
+            },
+            "&.Mui-disabled": {
+              color: "rgba(255,255,255,0.35)",
+              borderColor: "rgba(255,255,255,0.16)",
+            },
+          }}
         >
           Leave Queue
-        </button>
-      </div>
+        </Button>
+      </Stack>
 
-      {feedback ? <p className="text-sm text-slate-600">{feedback}</p> : null}
-    </div>
+      {feedback ? (
+        <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.72)" }}>
+          {feedback}
+        </Typography>
+      ) : null}
+      {realtimeError ? (
+        <Alert
+          severity="warning"
+          sx={{
+            borderRadius: "10px",
+            border: "1px solid rgba(251,191,36,0.32)",
+            bgcolor: "rgba(251,191,36,0.09)",
+            color: "#fde68a",
+            "& .MuiAlert-icon": { color: "#fbbf24" },
+          }}
+        >
+          Realtime unavailable: {realtimeError}
+        </Alert>
+      ) : null}
+    </Stack>
   );
 }

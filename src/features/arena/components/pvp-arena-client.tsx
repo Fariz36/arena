@@ -1,6 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 import { createClient } from "@/lib/supabase/client";
 
 type PvpArenaClientProps = {
@@ -23,11 +34,21 @@ type SnapshotResponse = {
   questions: ArenaQuestion[];
   scores: Record<string, number>;
   arena_status: "waiting" | "active" | "finished" | null;
+  rating_change: {
+    before: number;
+    after: number;
+    delta: number;
+  } | null;
 };
 
 type MatchResultState = {
   winner: string | null;
   finalScores: Record<string, number>;
+  ratingChange: {
+    before: number;
+    after: number;
+    delta: number;
+  } | null;
 };
 
 export default function PvpArenaClient({ matchId, userId, username }: PvpArenaClientProps) {
@@ -47,6 +68,7 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
   const [scores, setScores] = useState<Record<string, number>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [matchResult, setMatchResult] = useState<MatchResultState | null>(null);
+  const [resultModalOpen, setResultModalOpen] = useState(false);
 
   const refreshSnapshot = useCallback(async () => {
     const response = await fetch(`/api/pvp/arena/${matchId}/snapshot`, {
@@ -79,7 +101,12 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
               ? participants[0]
               : participants[1];
 
-      setMatchResult({ winner, finalScores });
+      setMatchResult({
+        winner,
+        finalScores,
+        ratingChange: payload.rating_change ?? null,
+      });
+      setResultModalOpen(true);
       setCurrentQuestion(null);
     }
   }, [matchId]);
@@ -129,7 +156,7 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
         }
         realtimeActiveRef.current = false;
         setConnectionMode("POLLING");
-        setRealtimeError(error instanceof Error ? error.message : "Failed to initialize realtime.");
+        setFeedback(error instanceof Error ? error.message : "Failed to initialize realtime.");
         return;
       }
       if (isDisposed) {
@@ -201,17 +228,6 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
         const lastQuestion = questions[questions.length - 1];
         const finishedAt = new Date(lastQuestion.question_start_time).getTime() + lastQuestion.time_limit * 1000;
         if (nowMs >= finishedAt) {
-          const participants = Object.keys(scores);
-          const winner =
-            participants.length < 2
-              ? participants[0] ?? null
-              : scores[participants[0]] === scores[participants[1]]
-                ? null
-                : scores[participants[0]] > scores[participants[1]]
-                  ? participants[0]
-                  : participants[1];
-
-          setMatchResult({ winner, finalScores: scores });
           setCurrentQuestion(null);
           setRemainingMs(0);
           return;
@@ -279,80 +295,132 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
 
   const myScore = scores[userId] ?? 0;
   const secondsLeft = Math.ceil(remainingMs / 1000);
+  const didWin = matchResult?.winner === userId;
+  const isDraw = matchResult?.winner === null;
+  const connectionLabelText =
+    !isConnected ? "Disconnected" : connectionMode === "REALTIME" ? "Realtime active" : connectionMode === "CONNECTING" ? "Connecting..." : "Fallback polling";
+  const connectionChipColor = !isConnected ? "error" : connectionMode === "REALTIME" ? "success" : connectionMode === "CONNECTING" ? "warning" : "default";
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm">
-        <p className="text-slate-700">Match: {matchId}</p>
-        <p className="text-slate-700">
-          {!isConnected
-            ? "Disconnected"
-            : connectionMode === "REALTIME"
-              ? "Realtime active"
-              : connectionMode === "CONNECTING"
-                ? "Connecting..."
-                : "Fallback polling"}
-        </p>
-      </div>
+    <Stack spacing={2.5}>
+      <Paper variant="outlined" sx={{ borderRadius: 2, p: 1.5 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}>
+          <Typography variant="body2" color="text.secondary">
+            Match: {matchId}
+          </Typography>
+          <Chip size="small" color={connectionChipColor} label={connectionLabelText} sx={{ width: "fit-content" }} />
+        </Stack>
+      </Paper>
 
       {currentQuestion ? (
-        <section className="space-y-3 rounded-lg border border-slate-200 p-4">
-          <div className="flex items-center justify-between text-sm">
-            <p className="font-medium text-slate-900">
-              Question {currentQuestion.question_no}/{questions.length}
-            </p>
-            <p className="font-semibold text-amber-700">Time left: {secondsLeft}s</p>
-          </div>
-          <p className="text-slate-900">{currentQuestion.text}</p>
+        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
+          <Stack spacing={2}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle2">
+                Question {currentQuestion.question_no}/{questions.length}
+              </Typography>
+              <Typography variant="body2" color="warning.main" fontWeight={600}>
+                Time left: {secondsLeft}s
+              </Typography>
+            </Stack>
+          <Typography variant="body1">{currentQuestion.text}</Typography>
           {currentQuestion.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Box
+              component="img"
               src={currentQuestion.image_url}
               alt={`Question ${currentQuestion.question_no} illustration`}
-              className="max-h-80 w-full rounded-md border border-slate-200 object-contain"
               loading="lazy"
+              sx={{
+                maxHeight: 320,
+                width: "100%",
+                borderRadius: 1,
+                border: 1,
+                borderColor: "divider",
+                objectFit: "contain",
+              }}
             />
           ) : null}
-          <div className="grid gap-2">
+          <Stack spacing={1}>
             {currentQuestion.options.map((option) => (
-              <button
+              <Button
                 key={option.id}
                 type="button"
                 onClick={() => {
                   void handleAnswer(option.id);
                 }}
                 disabled={selectedOptionId !== null || remainingMs <= 0 || Boolean(answeredQuestionIds[currentQuestion.question_id])}
-                className={`rounded-md border px-3 py-2 text-left text-sm ${
-                  selectedOptionId === option.id
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-300 bg-white text-slate-800"
-                } disabled:opacity-60`}
+                variant={selectedOptionId === option.id ? "contained" : "outlined"}
+                color={selectedOptionId === option.id ? "primary" : "inherit"}
+                sx={{ justifyContent: "flex-start", textTransform: "none" }}
               >
                 {option.text}
-              </button>
+              </Button>
             ))}
-          </div>
-        </section>
+          </Stack>
+          </Stack>
+        </Paper>
       ) : (
-        <section className="rounded-lg border border-slate-200 p-4 text-sm text-slate-700">
-          Waiting for next question...
-        </section>
+        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Waiting for next question...
+          </Typography>
+        </Paper>
       )}
 
-      <section className="rounded-lg border border-slate-200 p-4">
-        <h2 className="text-sm font-semibold text-slate-900">Score</h2>
-        <p className="mt-1 text-sm text-slate-700">You: {myScore}</p>
-      </section>
+      <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
+        <Typography variant="subtitle2">Score</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          You: {myScore}
+        </Typography>
+      </Paper>
 
       {matchResult ? (
-        <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm">
-          <p className="font-semibold text-emerald-800">Match finished</p>
-          <p className="text-emerald-700">Winner: {matchResult.winner ?? "Draw"}</p>
-          <p className="text-emerald-700">Your final score: {matchResult.finalScores[userId] ?? 0}</p>
-        </section>
+        <Alert severity="success">
+          <Typography variant="subtitle2">Match finished</Typography>
+          <Typography variant="body2">Winner: {matchResult.winner ?? "Draw"}</Typography>
+          <Typography variant="body2">Your final score: {matchResult.finalScores[userId] ?? 0}</Typography>
+        </Alert>
       ) : null}
 
-      {feedback ? <p className="text-sm text-slate-600">{feedback}</p> : null}
-    </div>
+      {feedback ? (
+        <Typography variant="body2" color="text.secondary">
+          {feedback}
+        </Typography>
+      ) : null}
+
+      {resultModalOpen && matchResult ? (
+        <Dialog open={resultModalOpen} onClose={() => setResultModalOpen(false)} fullWidth maxWidth="xs">
+          <DialogTitle>{isDraw ? "Match Draw" : didWin ? "Match Win" : "Match Lose"}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                Final score: {matchResult.finalScores[userId] ?? 0}
+              </Typography>
+              <Paper variant="outlined" sx={{ borderRadius: 2, p: 1.5 }}>
+              {matchResult.ratingChange ? (
+                <Stack spacing={0.5}>
+                  <Typography variant="body2">
+                    Rating change:{" "}
+                    <Box component="span" sx={{ fontWeight: 700, color: matchResult.ratingChange.delta >= 0 ? "success.main" : "error.main" }}>
+                      {matchResult.ratingChange.delta >= 0 ? "+" : ""}
+                      {matchResult.ratingChange.delta}
+                    </Box>
+                  </Typography>
+                  <Typography variant="body2">Rating after: {matchResult.ratingChange.after}</Typography>
+                </Stack>
+              ) : (
+                <Typography variant="body2">Rating update is processing.</Typography>
+              )}
+              </Paper>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setResultModalOpen(false)} variant="contained">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      ) : null}
+    </Stack>
   );
 }
