@@ -8,6 +8,7 @@ type ArenaQuestionRow = {
   questions: {
     question_text: string;
     time_limit_seconds: number;
+    image_url: string | null;
     question_options: Array<{
       id: string;
       option_text: string;
@@ -39,7 +40,7 @@ export async function GET(
   const [{ data: questionRows, error: questionsError }, { data: playerRows, error: playersError }, { data: arenaRow, error: arenaError }] = await Promise.all([
     supabase
       .from("arena_questions")
-      .select("question_id, question_no, question_start_time, questions(question_text, time_limit_seconds, question_options(id, option_text, position))")
+      .select("question_id, question_no, question_start_time, questions(question_text, time_limit_seconds, image_url, question_options(id, option_text, position))")
       .eq("arena_id", arenaId)
       .order("question_no", { ascending: true })
       .returns<ArenaQuestionRow[]>(),
@@ -77,6 +78,7 @@ export async function GET(
         question_start_time: row.question_start_time,
         text: question.question_text,
         time_limit: question.time_limit_seconds,
+        image_url: question.image_url,
         options: [...question.question_options]
           .sort((a, b) => a.position - b.position)
           .map((option) => ({ id: option.id, text: option.option_text })),

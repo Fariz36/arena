@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type PvpArenaClientProps = {
   matchId: string;
@@ -14,6 +15,7 @@ type ArenaQuestion = {
   question_start_time: string;
   text: string;
   time_limit: number;
+  image_url?: string | null;
   options: Array<{ id: string; text: string }>;
 };
 
@@ -32,6 +34,7 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
   void username;
 
   const timerIntervalRef = useRef<number | null>(null);
+  const [connectionMode, setConnectionMode] = useState<"CONNECTING" | "REALTIME" | "POLLING">("CONNECTING");
 
   const [isConnected, setIsConnected] = useState(false);
   const [questions, setQuestions] = useState<ArenaQuestion[]>([]);
@@ -81,6 +84,7 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
 
   useEffect(() => {
     let isDisposed = false;
+    const supabase = createClient();
 
     const run = async () => {
       if (isDisposed) {
@@ -90,19 +94,54 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
     };
 
     void run();
-    const intervalId = window.setInterval(() => {
+
+    const arenaChannel = supabase
+      .channel(`arena-live-${matchId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "answers", filter: `arena_id=eq.${matchId}` },
+        () => {
+          void run();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "arena_players", filter: `arena_id=eq.${matchId}` },
+        () => {
+          void run();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "arenas", filter: `id=eq.${matchId}` },
+        () => {
+          void run();
+        },
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setConnectionMode("REALTIME");
+          return;
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setConnectionMode("POLLING");
+        }
+      });
+
+    const fallbackIntervalId = window.setInterval(() => {
       void run();
-    }, 2000);
+    }, 10000);
 
     return () => {
       isDisposed = true;
-      window.clearInterval(intervalId);
+      window.clearInterval(fallbackIntervalId);
+      void supabase.removeChannel(arenaChannel);
       if (timerIntervalRef.current !== null) {
         window.clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
     };
-  }, [refreshSnapshot]);
+  }, [matchId, refreshSnapshot]);
 
   useEffect(() => {
     if (questions.length === 0) {
@@ -204,7 +243,15 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
     <div className="space-y-4">
       <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm">
         <p className="text-slate-700">Match: {matchId}</p>
-        <p className="text-slate-700">{isConnected ? "Server polling active" : "Polling disconnected"}</p>
+        <p className="text-slate-700">
+          {!isConnected
+            ? "Disconnected"
+            : connectionMode === "REALTIME"
+              ? "Realtime active"
+              : connectionMode === "CONNECTING"
+                ? "Connecting..."
+                : "Fallback polling"}
+        </p>
       </div>
 
       {currentQuestion ? (
@@ -216,6 +263,15 @@ export default function PvpArenaClient({ matchId, userId, username }: PvpArenaCl
             <p className="font-semibold text-amber-700">Time left: {secondsLeft}s</p>
           </div>
           <p className="text-slate-900">{currentQuestion.text}</p>
+          {currentQuestion.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={currentQuestion.image_url}
+              alt={`Question ${currentQuestion.question_no} illustration`}
+              className="max-h-80 w-full rounded-md border border-slate-200 object-contain"
+              loading="lazy"
+            />
+          ) : null}
           <div className="grid gap-2">
             {currentQuestion.options.map((option) => (
               <button

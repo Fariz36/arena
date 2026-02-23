@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 type PvpQueueButtonProps = {
   userId: string;
@@ -25,7 +26,7 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
   void username;
 
   const router = useRouter();
-  const [connectionStatus, setConnectionStatus] = useState<"CONNECTING" | "POLLING">("CONNECTING");
+  const [connectionStatus, setConnectionStatus] = useState<"CONNECTING" | "REALTIME" | "POLLING">("CONNECTING");
   const [inQueue, setInQueue] = useState(false);
   const [queueCount, setQueueCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -66,6 +67,7 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
 
   useEffect(() => {
     let isDisposed = false;
+    const supabase = createClient();
 
     const run = async () => {
       if (isDisposed) {
@@ -75,15 +77,50 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
     };
 
     void run();
-    const intervalId = window.setInterval(() => {
+
+    const queueChannel = supabase
+      .channel(`queue-status-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "match_queue" },
+        () => {
+          void run();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "arena_players", filter: `user_id=eq.${userId}` },
+        () => {
+          void run();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "arenas" },
+        () => {
+          void run();
+        },
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setConnectionStatus("REALTIME");
+          return;
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setConnectionStatus("POLLING");
+        }
+      });
+
+    const fallbackIntervalId = window.setInterval(() => {
       void run();
-    }, 3000);
+    }, 10000);
 
     return () => {
       isDisposed = true;
-      window.clearInterval(intervalId);
+      window.clearInterval(fallbackIntervalId);
+      void supabase.removeChannel(queueChannel);
     };
-  }, [refreshStatus]);
+  }, [refreshStatus, userId]);
 
   async function handleJoinQueue() {
     setLoading(true);
@@ -140,8 +177,14 @@ export default function PvpQueueButton({ userId, username }: PvpQueueButtonProps
     await refreshStatus();
   }
 
-  const connectionLabel = connectionStatus === "CONNECTING" ? "connecting" : "server polling";
-  const connectionDotClass = connectionStatus === "CONNECTING" ? "bg-amber-500" : "bg-slate-400";
+  const connectionLabel =
+    connectionStatus === "CONNECTING"
+      ? "connecting"
+      : connectionStatus === "REALTIME"
+        ? "realtime"
+        : "server polling";
+  const connectionDotClass =
+    connectionStatus === "CONNECTING" ? "bg-amber-500" : connectionStatus === "REALTIME" ? "bg-emerald-500" : "bg-slate-400";
 
   return (
     <div className="space-y-2">
