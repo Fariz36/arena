@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import MuiThemeRegistry from "@/components/ui/mui-theme-registry";
 
 export const metadata: Metadata = {
   title: "Arena Starter",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <MuiThemeRegistry>{children}</MuiThemeRegistry>
+      </body>
     </html>
   );
 }

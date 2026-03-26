@@ -8,7 +8,6 @@ export default function HomePage() {
     <AppPageContainer maxWidth="sm">
       <AppPageCard>
         <Stack spacing={3}>
-          <AppPageHeading title="QuizArena" description="Supabase auth and route guards are now enabled." />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
             <Link href="/login">
               <Button variant="contained">Login</Button>

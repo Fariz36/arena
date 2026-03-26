@@ -1,32 +1,7 @@
 import { NextResponse } from "next/server";
+import { fetchProfileMatchHistory } from "@/features/history/services/get-profile-match-history";
+import { normalizeHistoryQuery } from "@/features/history/types/match-history";
 import { createClient } from "@/lib/supabase/server";
-
-type MatchHistoryRow = {
-  arena_id: string;
-  start_time: string;
-  end_time: string;
-  duration_seconds: number;
-  final_score: number;
-  final_rank: number;
-  rating_before: number | null;
-  rating_after: number | null;
-  rating_delta: number | null;
-  avg_response_seconds: number;
-  correct_count: number;
-  wrong_count: number;
-  total_count: number;
-};
-
-type RpcCastError = {
-  Error: string;
-};
-
-function normalizeHistoryRows(data: MatchHistoryRow[] | RpcCastError | null): MatchHistoryRow[] {
-  if (!data || !Array.isArray(data)) {
-    return [];
-  }
-  return data;
-}
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -39,26 +14,18 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const page = Number(searchParams.get("page") ?? 1);
-  const pageSize = Number(searchParams.get("pageSize") ?? 10);
-  const sortBy = String(searchParams.get("sortBy") ?? "end_time");
-  const sortDir = String(searchParams.get("sortDir") ?? "desc");
+  const query = normalizeHistoryQuery({
+    page: searchParams.get("page") ?? undefined,
+    pageSize: searchParams.get("pageSize") ?? undefined,
+    sortBy: searchParams.get("sortBy") ?? undefined,
+    sortDir: searchParams.get("sortDir") ?? undefined,
+  });
 
-  const { data, error } = await supabase
-    .rpc("fn_profile_match_history", {
-      p_page: Number.isFinite(page) ? page : 1,
-      p_page_size: Number.isFinite(pageSize) ? pageSize : 10,
-      p_sort_by: sortBy,
-      p_sort_dir: sortDir,
-    })
-    .returns<MatchHistoryRow[]>();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  try {
+    const result = await fetchProfileMatchHistory(supabase, query);
+    return NextResponse.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load history";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
-
-  const rows = normalizeHistoryRows(data as MatchHistoryRow[] | RpcCastError | null);
-  const total = rows.length > 0 ? rows[0].total_count : 0;
-
-  return NextResponse.json({ rows, total });
 }

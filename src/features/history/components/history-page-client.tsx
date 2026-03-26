@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   flexRender,
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
   type SortingState,
+  type Updater,
 } from "@tanstack/react-table";
 import Chip from "@mui/material/Chip";
 import FormControl from "@mui/material/FormControl";
@@ -23,24 +25,23 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
-
-type MatchHistoryRow = {
-  arena_id: string;
-  start_time: string;
-  end_time: string;
-  duration_seconds: number;
-  final_score: number;
-  final_rank: number;
-  rating_before: number | null;
-  rating_after: number | null;
-  rating_delta: number | null;
-  avg_response_seconds: number;
-  correct_count: number;
-  wrong_count: number;
-};
+import {
+  DEFAULT_HISTORY_SORT_BY,
+  DEFAULT_HISTORY_SORT_DIR,
+  PAGE_SIZE_OPTIONS,
+  type HistorySortBy,
+  type HistorySortDir,
+  type MatchHistoryRow,
+} from "@/features/history/types/match-history";
 
 type HistoryPageClientProps = {
   email: string | undefined;
+  historyRows: MatchHistoryRow[];
+  historyTotal: number;
+  page: number;
+  pageSize: number;
+  sortBy: HistorySortBy;
+  sortDir: HistorySortDir;
 };
 
 function formatDateTime(iso: string | null | undefined) {
@@ -63,14 +64,39 @@ function formatSignedNumber(value: number | null | undefined) {
   return `${value > 0 ? "+" : ""}${value}`;
 }
 
-export default function HistoryPageClient({ email }: HistoryPageClientProps) {
-  const [historyRows, setHistoryRows] = useState<MatchHistoryRow[]>([]);
-  const [historyTotal, setHistoryTotal] = useState(0);
-  const [historyPageIndex, setHistoryPageIndex] = useState(0);
-  const [historyPageSize, setHistoryPageSize] = useState(10);
-  const [historySorting, setHistorySorting] = useState<SortingState>([{ id: "end_time", desc: true }]);
+export default function HistoryPageClient({
+  email,
+  historyRows,
+  historyTotal,
+  page,
+  pageSize,
+  sortBy,
+  sortDir,
+}: HistoryPageClientProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+  const historyPageIndex = page - 1;
+  const pageCount = Math.max(Math.ceil(historyTotal / pageSize), 1);
+  const historySorting = useMemo<SortingState>(() => [{ id: sortBy, desc: sortDir === "desc" }], [sortBy, sortDir]);
 
-  const pageCount = Math.max(Math.ceil(historyTotal / historyPageSize), 1);
+  function navigate(nextValues: Partial<{ page: number; pageSize: number; sortBy: HistorySortBy; sortDir: HistorySortDir }>) {
+    const params = new URLSearchParams(searchParams.toString());
+    const nextPage = nextValues.page ?? page;
+    const nextPageSize = nextValues.pageSize ?? pageSize;
+    const nextSortBy = nextValues.sortBy ?? sortBy;
+    const nextSortDir = nextValues.sortDir ?? sortDir;
+
+    params.set("page", String(nextPage));
+    params.set("pageSize", String(nextPageSize));
+    params.set("sortBy", nextSortBy);
+    params.set("sortDir", nextSortDir);
+
+    startTransition(() => {
+      router.replace(`${pathname}?${params.toString()}`);
+    });
+  }
 
   const columns = useMemo<ColumnDef<MatchHistoryRow>[]>(
     () => [
@@ -111,6 +137,8 @@ export default function HistoryPageClient({ email }: HistoryPageClientProps) {
     [],
   );
 
+  // TanStack Table is intentionally used here for manual sorting/pagination control.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: historyRows,
     columns,
@@ -118,56 +146,25 @@ export default function HistoryPageClient({ email }: HistoryPageClientProps) {
       sorting: historySorting,
       pagination: {
         pageIndex: historyPageIndex,
-        pageSize: historyPageSize,
+        pageSize,
       },
     },
     pageCount,
     manualPagination: true,
     manualSorting: true,
-    onSortingChange: setHistorySorting,
+    enableSortingRemoval: false,
+    onSortingChange: (updater: Updater<SortingState>) => {
+      const nextSorting = typeof updater === "function" ? updater(historySorting) : updater;
+      const nextSort = nextSorting[0];
+
+      navigate({
+        page: 1,
+        sortBy: (nextSort?.id as HistorySortBy | undefined) ?? DEFAULT_HISTORY_SORT_BY,
+        sortDir: nextSort?.desc ? "desc" : DEFAULT_HISTORY_SORT_DIR,
+      });
+    },
     getCoreRowModel: getCoreRowModel(),
   });
-
-  useEffect(() => {
-    let disposed = false;
-
-    const run = async () => {
-      const sort = historySorting[0];
-      const params = new URLSearchParams({
-        page: String(historyPageIndex + 1),
-        pageSize: String(historyPageSize),
-        sortBy: sort?.id ?? "end_time",
-        sortDir: sort?.desc ? "desc" : "asc",
-      });
-
-      const response = await fetch(`/api/profile/history?${params.toString()}`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-
-      if (!response.ok || disposed) {
-        return;
-      }
-
-      const payload = (await response.json()) as {
-        rows: MatchHistoryRow[];
-        total: number;
-      };
-
-      if (disposed) {
-        return;
-      }
-
-      setHistoryRows(payload.rows ?? []);
-      setHistoryTotal(Number(payload.total ?? 0));
-    };
-
-    void run();
-    return () => {
-      disposed = true;
-    };
-  }, [historyPageIndex, historyPageSize, historySorting]);
 
   return (
     <Stack spacing={2}>
@@ -255,6 +252,8 @@ export default function HistoryPageClient({ email }: HistoryPageClientProps) {
               borderRadius: "12px",
               border: "1px solid rgba(255,255,255,0.08)",
               bgcolor: "rgba(255,255,255,0.02)",
+              opacity: isPending ? 0.72 : 1,
+              transition: "opacity 160ms ease",
             }}
           >
             <Table
@@ -329,8 +328,9 @@ export default function HistoryPageClient({ email }: HistoryPageClientProps) {
               </InputLabel>
               <Select
                 labelId="history-page-size-label"
-                value={historyPageSize}
+                value={pageSize}
                 label="Rows"
+                disabled={isPending}
                 sx={{
                   color: "rgba(255,255,255,0.88)",
                   borderRadius: "10px",
@@ -350,11 +350,13 @@ export default function HistoryPageClient({ email }: HistoryPageClientProps) {
                   },
                 }}
                 onChange={(event) => {
-                  setHistoryPageSize(Number(event.target.value));
-                  setHistoryPageIndex(0);
+                  navigate({
+                    page: 1,
+                    pageSize: Number(event.target.value),
+                  });
                 }}
               >
-                {[5, 10, 20, 50].map((size) => (
+                {PAGE_SIZE_OPTIONS.map((size) => (
                   <MenuItem key={size} value={size}>{size}</MenuItem>
                 ))}
               </Select>
@@ -362,9 +364,10 @@ export default function HistoryPageClient({ email }: HistoryPageClientProps) {
             <Pagination
               count={pageCount}
               page={historyPageIndex + 1}
-              onChange={(_event, page) => setHistoryPageIndex(page - 1)}
+              onChange={(_event, nextPage) => navigate({ page: nextPage })}
               color="primary"
               size="small"
+              disabled={isPending}
               sx={{
                 "& .MuiPaginationItem-root": {
                   color: "rgba(255,255,255,0.8)",
